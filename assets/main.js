@@ -4,6 +4,18 @@
   var reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
   html.classList.add('anim-ok');
 
+  /* ekran ładowania: logo się rysuje, potem rozsypuje się w piksele */
+  var ld=d.querySelector('.loader');
+  if(ld&&html.classList.contains('intro')){
+    var t0=performance.now();
+    function endIntro(){
+      var wait=Math.max(0,(reduce?300:2150)-(performance.now()-t0));
+      setTimeout(function(){ld.classList.add('out');setTimeout(function(){html.classList.remove('intro');ld.remove()},800)},wait);
+    }
+    if(d.readyState==='complete')endIntro();else addEventListener('load',endIntro);
+    setTimeout(function(){if(d.body.contains(ld)){ld.classList.add('out');html.classList.remove('intro')}},4200);
+  }
+
   /* płynne przewijanie */
   var lenis=null;
   if(window.Lenis&&!reduce){
