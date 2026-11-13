@@ -1,334 +1,197 @@
-/* Elektrodom - ruch strony. Każdy blok w try/catch: awaria jednego nie zatrzymuje reszty. */
-(function () {
-  var d = document.documentElement;
-  var RM = false;
-  try { RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { }
-  var NAV = function () { return parseInt(getComputedStyle(d).getPropertyValue('--nav-h'), 10) || 76; };
+/* Elektrodom – demo v3 „Pstryk” */
+(function(){
+  var d=document, html=d.documentElement;
+  var reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var touch=window.matchMedia&&matchMedia('(hover: none)').matches;
+  html.classList.add('anim-ok');
 
-  /* 1. Płynne przewijanie (Lenis) - tylko mysz/gładzik, telefon przewija natywnie */
-  var lenis = null;
-  try {
-    if (!RM && window.Lenis && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
-      lenis = new window.Lenis({ lerp: 0.085, wheelMultiplier: 0.95, smoothWheel: true });
-      var raf = function (t) { lenis.raf(t); requestAnimationFrame(raf); };
-      requestAnimationFrame(raf);
-      if (d.classList.contains('intro-on')) {
-        lenis.stop();
-        document.addEventListener('wejscie:koniec', function () { lenis.start(); });
-      }
-    }
-  } catch (e) { lenis = null; }
-  window.__lenis = lenis;
-
-  var scrollY = function () { return window.pageYOffset || d.scrollTop || 0; };
-  var naScroll = [];
-  var tik = false;
-  var przelicz = function () { tik = false; for (var i = 0; i < naScroll.length; i++) { try { naScroll[i](); } catch (e) { } } };
-  var zglos = function () { if (!tik) { tik = true; requestAnimationFrame(przelicz); } };
-  window.addEventListener('scroll', zglos, { passive: true });
-  window.addEventListener('resize', zglos, { passive: true });
-
-  /* 2. Pasek: tło po zjechaniu, chowanie przy przewijaniu w dół */
-  try {
-    var head = document.querySelector('.site-head');
-    var sc = document.querySelector('.sticky-call');
-    var hero = document.querySelector('.hero, .pagehead');
-    var stopka = document.querySelector('.site-foot');
-    var ostatni = 0;
-    naScroll.push(function () {
-      var y = scrollY();
-      if (head) {
-        head.classList.toggle('is-scrolled', y > 24);
-        var wDol = y > ostatni + 4, wGore = y < ostatni - 4;
-        if (!d.classList.contains('menu-open')) {
-          if (wDol && y > 520) head.classList.add('is-hidden');
-          else if (wGore || y < 520) head.classList.remove('is-hidden');
-        }
-      }
-      if (sc) {
-        sc.classList.toggle('is-on', y > (hero ? hero.offsetHeight * 0.6 : 300));
-        sc.classList.toggle('schowany', !!stopka && stopka.getBoundingClientRect().top < window.innerHeight - 90);
-      }
-      ostatni = y;
-    });
-  } catch (e) { }
-
-  /* 3. Odsłanianie sekcji: obserwator + zapas przy przewijaniu + twardy bezpiecznik */
-  try {
-    var rv = [].slice.call(document.querySelectorAll('.rv'));
-    var odslon = function (el) {
-      if (el.classList.contains('is-in')) return;
-      el.classList.add('is-in');
-      var dl = parseInt(el.style.getPropertyValue('--d'), 10) || 0;
-      setTimeout(function () { el.classList.add('rv-done'); }, 1150 + dl);
-    };
-    if (!d.classList.contains('anim')) {
-      rv.forEach(odslon);
-    } else {
-      if ('IntersectionObserver' in window) {
-        var io = new IntersectionObserver(function (wpisy) {
-          wpisy.forEach(function (w) { if (w.isIntersecting) { odslon(w.target); io.unobserve(w.target); } });
-        }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
-        rv.forEach(function (el) { io.observe(el); });
-      }
-      /* przeskok (np. kotwica) omija obserwatora - odsłaniamy wszystko, co już minęło */
-      var zapas = function () {
-        var h = window.innerHeight;
-        for (var i = 0; i < rv.length; i++) {
-          if (!rv[i].classList.contains('is-in') && rv[i].getBoundingClientRect().top < h * 0.94) odslon(rv[i]);
-        }
-      };
-      naScroll.push(zapas);
-      setTimeout(zapas, 400);
-      setTimeout(zapas, 3200);
-    }
-  } catch (e) { document.querySelectorAll('.rv').forEach(function (el) { el.classList.add('is-in'); }); }
-
-  /* 4. Tekst w nagłówku wchodzi kaskadą (na głównej po ekranie wejścia) */
-  try {
-    if (!d.classList.contains('intro-on')) {
-      requestAnimationFrame(function () { requestAnimationFrame(function () { d.classList.add('hero-go'); }); });
-    }
-    setTimeout(function () { d.classList.add('hero-go'); }, 4800);
-  } catch (e) { d.classList.add('hero-go'); }
-
-  /* 5. Liczniki */
-  try {
-    var liczby = [].slice.call(document.querySelectorAll('.num[data-to]'));
-    var licz = function (el) {
-      if (el.__liczy) return; el.__liczy = true;
-      var cel = parseFloat(el.getAttribute('data-to').replace(',', '.'));
-      var miejsca = (el.getAttribute('data-to').split(',')[1] || '').length;
-      if (RM) { return; }
-      var t0 = null, DUR = 1700;
-      var krok = function (t) {
-        if (!t0) t0 = t;
-        var p = Math.min(1, (t - t0) / DUR), e = 1 - Math.pow(2, -10 * p);
-        var v = (cel * (p === 1 ? 1 : e)).toFixed(miejsca).replace('.', ',');
-        el.textContent = v;
-        if (p < 1) requestAnimationFrame(krok);
-      };
-      el.textContent = (0).toFixed(miejsca).replace('.', ',');
-      requestAnimationFrame(krok);
-    };
-    if ('IntersectionObserver' in window && !RM) {
-      var io2 = new IntersectionObserver(function (wp) {
-        wp.forEach(function (w) { if (w.isIntersecting) { licz(w.target); io2.unobserve(w.target); } });
-      }, { threshold: 0.6 });
-      liczby.forEach(function (el) { io2.observe(el); });
-    }
-  } catch (e) { }
-
-  /* 6. Proces: przewód zapala kolejne etapy */
-  try {
-    var kroki = document.querySelector('.proc-steps');
-    if (kroki) {
-      var wire = kroki.querySelector('.wire');
-      var steps = [].slice.call(kroki.querySelectorAll('.step'));
-      var licznik = document.querySelector('.proc-count b');
-      var teraz = document.querySelector('.proc-now');
-      naScroll.push(function () {
-        var r = kroki.getBoundingClientRect(), h = window.innerHeight, linia = h * 0.58;
-        var p = Math.max(0, Math.min(1, (linia - r.top - 16) / (r.height - 72)));
-        if (wire) wire.style.setProperty('--p', p.toFixed(4));
-        var akt = 0;
-        steps.forEach(function (s, i) {
-          var on = s.getBoundingClientRect().top + 14 < linia;
-          s.classList.toggle('is-live', on);
-          if (on) akt = i;
-        });
-        if (licznik) licznik.textContent = ('0' + (akt + 1)).slice(-2);
-        if (teraz && steps[akt]) teraz.textContent = steps[akt].getAttribute('data-nazwa') || '';
-      });
-    }
-  } catch (e) { }
-
-  /* 7. Paralaksa zdjęć wewnątrz ramek (tylko duży ekran) */
-  try {
-    if (!RM && window.matchMedia('(min-width: 900px)').matches) {
-      var plx = [].slice.call(document.querySelectorAll('[data-plx]'));
-      naScroll.push(function () {
-        var h = window.innerHeight;
-        plx.forEach(function (el) {
-          var r = el.getBoundingClientRect();
-          if (r.bottom < -100 || r.top > h + 100) return;
-          var k = parseFloat(el.getAttribute('data-plx')) || 40;
-          var p = (r.top + r.height / 2 - h / 2) / (h / 2 + r.height / 2);
-          el.style.translate = '0 ' + (p * -k).toFixed(1) + 'px';
-        });
-      });
-    }
-  } catch (e) { }
-
-  /* 8. Menu na telefonie */
-  try {
-    var burger = document.querySelector('.burger');
-    if (burger) {
-      var zamknij = function () {
-        d.classList.remove('menu-open'); burger.setAttribute('aria-expanded', 'false');
-        burger.setAttribute('aria-label', 'Otwórz menu'); if (lenis) lenis.start();
-      };
-      burger.addEventListener('click', function () {
-        var otw = !d.classList.contains('menu-open');
-        if (!otw) { zamknij(); return; }
-        d.classList.add('menu-open'); burger.setAttribute('aria-expanded', 'true');
-        burger.setAttribute('aria-label', 'Zamknij menu'); if (lenis) lenis.stop();
-      });
-      document.querySelectorAll('.mnav a').forEach(function (a) { a.addEventListener('click', zamknij); });
-      document.addEventListener('keydown', function (e) { if (e.key === 'Escape') zamknij(); });
-    }
-  } catch (e) { }
-
-  /* 9. Pytania: płynne rozwijanie */
-  try {
-    document.querySelectorAll('.faq-item').forEach(function (det) {
-      var sum = det.querySelector('summary');
-      if (!sum || !det.animate || RM) return;
-      sum.addEventListener('click', function (e) {
-        e.preventDefault();
-        if (det.__anim) det.__anim.cancel();
-        var start = det.offsetHeight, koniec;
-        det.style.overflow = 'hidden';
-        if (!det.open) {
-          det.open = true;
-          koniec = det.offsetHeight;
-        } else {
-          var b = parseFloat(getComputedStyle(det).borderTopWidth) * 2 || 2;
-          koniec = sum.offsetHeight + b;
-          det.classList.add('zamyka');
-        }
-        det.__anim = det.animate({ height: [start + 'px', koniec + 'px'] }, { duration: 560, easing: 'cubic-bezier(.16,1,.3,1)' });
-        det.__anim.onfinish = function () {
-          if (det.classList.contains('zamyka')) { det.open = false; det.classList.remove('zamyka'); }
-          det.style.overflow = ''; det.__anim = null;
-        };
-        det.__anim.oncancel = function () { det.classList.remove('zamyka'); };
-      });
-    });
-  } catch (e) { }
-
-  /* 10. Podgląd zdjęć: galeria realizacji i certyfikat */
-  try {
-    var kafle = [].slice.call(document.querySelectorAll('[data-lb]'));
-    if (kafle.length) {
-      var lb = document.createElement('div');
-      lb.className = 'lb'; lb.setAttribute('role', 'dialog'); lb.setAttribute('aria-modal', 'true'); lb.setAttribute('aria-label', 'Podgląd zdjęcia');
-      lb.innerHTML = '<figure><img alt=""><figcaption></figcaption></figure>' +
-        '<button class="lb-btn lb-x" type="button" aria-label="Zamknij podgląd"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 6l12 12M18 6 6 18"/></svg></button>' +
-        '<button class="lb-btn lb-prev" type="button" aria-label="Poprzednie zdjęcie"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15 5l-7 7 7 7"/></svg></button>' +
-        '<button class="lb-btn lb-next" type="button" aria-label="Następne zdjęcie"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 5l7 7-7 7"/></svg></button>';
-      if (kafle.length < 2) lb.classList.add('lb-solo');
-      document.body.appendChild(lb);
-      var lbImg = lb.querySelector('img'), lbCap = lb.querySelector('figcaption'), idx = 0;
-      var pokaz = function (i) {
-        idx = (i + kafle.length) % kafle.length;
-        var k = kafle[idx], im = k.querySelector('img');
-        lbImg.src = k.getAttribute('href'); lbImg.alt = im ? im.alt : '';
-        lbCap.textContent = k.getAttribute('data-lb') || '';
-      };
-      var otworz = function (i) { pokaz(i); lb.classList.add('is-open'); if (lenis) lenis.stop(); lb.querySelector('.lb-x').focus({ preventScroll: true }); };
-      var zamknijLb = function () { lb.classList.remove('is-open'); if (lenis) lenis.start(); };
-      kafle.forEach(function (k, i) { k.addEventListener('click', function (e) { e.preventDefault(); otworz(i); }); });
-      lb.querySelector('.lb-x').addEventListener('click', zamknijLb);
-      lb.querySelector('.lb-prev').addEventListener('click', function () { pokaz(idx - 1); });
-      lb.querySelector('.lb-next').addEventListener('click', function () { pokaz(idx + 1); });
-      lb.addEventListener('click', function (e) { if (e.target === lb) zamknijLb(); });
-      document.addEventListener('keydown', function (e) {
-        if (!lb.classList.contains('is-open')) return;
-        if (e.key === 'Escape') zamknijLb();
-        if (e.key === 'ArrowLeft') pokaz(idx - 1);
-        if (e.key === 'ArrowRight') pokaz(idx + 1);
-      });
-    }
-  } catch (e) { }
-
-  /* 11. Kotwice na tej samej stronie - płynnie, z miejscem na pasek */
-  try {
-    document.querySelectorAll('a[href^="#"]').forEach(function (a) {
-      a.addEventListener('click', function (e) {
-        var id = a.getAttribute('href');
-        if (id.length < 2) return;
-        var cel = document.querySelector(id);
-        if (!cel) return;
-        e.preventDefault();
-        if (lenis) lenis.scrollTo(cel, { offset: -NAV() + 1, duration: 1.4 });
-        else cel.scrollIntoView({ behavior: RM ? 'auto' : 'smooth', block: 'start' });
-        history.replaceState(null, '', id);
-      });
-    });
-  } catch (e) { }
-
-  /* 12. Wyjście ze strony: przeglądarki bez przejść widoku dostają krótkie wygaszenie */
-  try {
-    if (!RM && !('CSSViewTransitionRule' in window)) {
-      document.addEventListener('click', function (e) {
-        var a = e.target.closest ? e.target.closest('a') : null;
-        if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-        var href = a.getAttribute('href') || '';
-        if (a.target || a.hasAttribute('download') || /^(#|tel:|mailto:|https?:|\/\/)/i.test(href)) return;
-        if (a.pathname === location.pathname && a.hash) return;
-        e.preventDefault();
-        d.classList.add('pt-leave');
-        setTimeout(function () { location.href = a.href; }, 300);
-      });
-      window.addEventListener('pageshow', function (ev) { if (ev.persisted) d.classList.remove('pt-leave'); });
-    }
-  } catch (e) { }
-
-  /* 13. Stopklatka: nieruchome zdjęcie jest warstwą na cały ekran - poza sekcją ją wyłączamy */
-  try {
-    var stk = document.querySelector('.stopklatka');
-    if (stk && 'IntersectionObserver' in window) {
-      new IntersectionObserver(function (wp) {
-        wp.forEach(function (w) { stk.classList.toggle('stk-off', !w.isIntersecting); });
-      }, { rootMargin: '300px 0px 300px 0px' }).observe(stk);
-    }
-  } catch (e) { }
-
-  przelicz();
-  d.classList.add('anim-ok');
-})();
-
-/* Licznik ważności wersji pokazowej: wjeżdża po zejściu z pierwszego ekranu. */
-(function () {
-  var el = document.querySelector('.demo-wazne');
-  if (!el || !el.getAttribute('data-do')) return;
-  var koniec = new Date(el.getAttribute('data-do') + 'T23:59:59');
-  if (isNaN(koniec)) return;
-  var txt = el.querySelector('.dw-txt') || el;
-  var dwa = function (n) { return (n < 10 ? '0' : '') + n; };
-
-  var cykl = parseInt(el.getAttribute('data-cykl') || '0', 10);   // dni; 0 = brak wznowienia
-  function tyka() {
-    var teraz = new Date(), ms = koniec - teraz;
-    // po wygaśnięciu licznik rusza od nowa (K. 10.08) - dema i tak zostają, a odliczanie
-    // ma dawać klientowi realne poczucie, że sprawa ma termin.
-    while (ms <= 0 && cykl > 0) {
-      koniec = new Date(koniec.getTime() + cykl * 86400000);
-      ms = koniec - teraz;
-    }
-    if (ms <= 0) { txt.innerHTML = 'Wersja pokazowa wygasła'; el.classList.add('is-koniec'); return false; }
-    var s = Math.floor(ms / 1000), d = Math.floor(s / 86400);
-    var g = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), sek = s % 60;
-    var zegar = dwa(g) + ':' + dwa(m) + ':' + dwa(sek);
-    txt.innerHTML = d > 0
-      ? 'Wersja pokazowa · <b>' + d + ' dni</b> <span class="dw-zeg">' + zegar + '</span>'
-      : 'Wersja pokazowa · <b class="dw-pilne">' + zegar + '</b>';
-    el.classList.toggle('is-pilne', d === 0);
-    return true;
+  /* płynne przewijanie */
+  var lenis=null;
+  if(window.Lenis&&!reduce){
+    lenis=new Lenis({lerp:.1,smoothWheel:true});
+    (function raf(t){lenis.raf(t);requestAnimationFrame(raf)})(performance.now());
   }
-  if (tyka() !== false) setInterval(tyka, 1000);
-  el.hidden = false;
 
-  var tick = false;
-  function stan() {
-    el.classList.toggle('is-on', (window.scrollY || 0) > window.innerHeight * 0.55);
-    tick = false;
+  /* nagłówek */
+  var top=d.querySelector('.top'), lastY=0;
+  function onScroll(){
+    var y=window.scrollY;
+    if(top){
+      top.classList.toggle('solid',y>40);
+      top.classList.toggle('hide',y>500&&y>lastY+2&&!d.querySelector('.menu.open'));
+      if(y<lastY-2)top.classList.remove('hide');
+    }
+    html.classList.toggle('scrolled',y>innerHeight*.7);
+    lastY=y;
   }
-  window.addEventListener('scroll', function () {
-    if (tick) return; tick = true; requestAnimationFrame(stan);
-  }, { passive: true });
-  stan();
+  addEventListener('scroll',onScroll,{passive:true});onScroll();
+
+  /* menu mobilne */
+  var menu=d.querySelector('.menu');
+  d.querySelectorAll('[data-menu]').forEach(function(b){b.addEventListener('click',function(){
+    var open=!menu.classList.contains('open');menu.classList.toggle('open',open);
+    d.body.style.overflow=open?'hidden':'';
+    if(lenis){open?lenis.stop():lenis.start()}
+  })});
+
+  /* latarka: kursor oświetla zdjęcie */
+  function torch(el,opts){
+    opts=opts||{};
+    var tx=parseFloat(getComputedStyle(el).getPropertyValue('--mx'))||50,ty=parseFloat(getComputedStyle(el).getPropertyValue('--my'))||45;
+    var x=tx,y=ty,moved=false,t0=performance.now(),vis=true;
+    el.addEventListener('pointermove',function(e){
+      var r=el.getBoundingClientRect();tx=(e.clientX-r.left)/r.width*100;ty=(e.clientY-r.top)/r.height*100;moved=true;
+    });
+    new IntersectionObserver(function(es){vis=es[0].isIntersecting}).observe(el);
+    (function loop(now){
+      if(vis){
+        if(!moved&&!reduce){ /* sama wędruje, dopóki nikt nie ruszy myszą / na telefonie */
+          var t=(now-t0)/1000;tx=(opts.cx||55)+Math.sin(t*.55)*(opts.ax||18);ty=(opts.cy||45)+Math.sin(t*.8+1)*(opts.ay||14);
+        }
+        x+=(tx-x)*.12;y+=(ty-y)*.12;
+        el.style.setProperty('--mx',x.toFixed(2)+'%');el.style.setProperty('--my',y.toFixed(2)+'%');
+      }
+      requestAnimationFrame(loop);
+    })(t0);
+  }
+
+  /* HERO: włącznik */
+  var hero=d.querySelector('.hero');
+  if(hero){
+    torch(hero,{cx:62,cy:42,ax:16,ay:12});
+    var sw=hero.querySelector('.switch'), words=hero.querySelectorAll('h1 .w'), lbl=sw&&sw.querySelector('.lbl span'), auto;
+    function setLit(on){
+      clearTimeout(auto);
+      sw.setAttribute('aria-pressed',on?'true':'false');
+      if(lbl)lbl.textContent=on?'Wyłącz światło':'Włącz światło';
+      if(on){
+        hero.classList.remove('flick');void hero.offsetWidth;hero.classList.add('flick','lit');
+        words.forEach(function(w,i){setTimeout(function(){w.classList.add('on')},(reduce?0:380)+i*110)});
+      }else{
+        hero.classList.remove('lit','flick');words.forEach(function(w){w.classList.remove('on')});
+      }
+    }
+    if(sw){
+      sw.addEventListener('click',function(){setLit(sw.getAttribute('aria-pressed')!=='true')});
+      auto=setTimeout(function(){setLit(true)},reduce?0:9000);
+    }
+  }
+
+  /* nagłówki podstron: zapalają się same */
+  d.querySelectorAll('.phero').forEach(function(p){
+    torch(p,{cx:64,cy:40});
+    setTimeout(function(){p.classList.add('flick','lit')},reduce?0:900);
+  });
+
+  /* CTA: pioruny pod latarką */
+  d.querySelectorAll('.call').forEach(function(c){torch(c,{cx:50,cy:50,ax:30,ay:22})});
+
+  /* lot zdjęć w 3D */
+  var fly=d.querySelector('.fly');
+  if(fly){
+    var cards=[].slice.call(fly.querySelectorAll('.card3d')),bar=fly.querySelector('.fly-bar'),title=fly.querySelector('.fly-title');
+    var GAP=900,N=cards.length;
+    function flyUpd(){
+      var r=fly.getBoundingClientRect(),h=fly.offsetHeight-innerHeight;
+      var p=Math.min(1,Math.max(0,-r.top/h));
+      var mob=innerWidth<760;
+      cards.forEach(function(c,i){
+        var z=-2600-i*GAP+p*((N-1)*GAP+2600+80);
+        var x=parseFloat(c.dataset.x)*(mob?.45:1),y=parseFloat(c.dataset.y)*(mob?.8:1);
+        var o=z<-1900?Math.max(0,(z+2700)/800):z>300?Math.max(0,1-(z-300)/350):1;
+        c.style.transform='translate(-50%,-50%) translate3d('+x+'vw,'+y+'vh,'+z.toFixed(0)+'px)';
+        c.style.opacity=o.toFixed(3);
+        c.style.visibility=o<=0?'hidden':'visible';
+      });
+      if(bar)bar.style.setProperty('--fill',p.toFixed(4));
+      if(title){var to=1-Math.min(1,p/.16);title.style.opacity=to.toFixed(3);title.style.transform='scale('+(1+p*.6).toFixed(3)+')';}
+    }
+    addEventListener('scroll',flyUpd,{passive:true});addEventListener('resize',flyUpd);flyUpd();
+  }
+
+  /* anatomia rozdzielnicy */
+  d.querySelectorAll('[data-anat]').forEach(function(a){
+    var spots=a.querySelectorAll('.spot'),items=a.querySelectorAll('.parts li'),board=a.querySelector('.board');
+    function pick(i){
+      spots.forEach(function(s,k){s.classList.toggle('on',k===i)});
+      items.forEach(function(s,k){s.classList.toggle('on',k===i)});
+    }
+    spots.forEach(function(s,i){s.addEventListener('click',function(){pick(i)});s.addEventListener('mouseenter',function(){pick(i)})});
+    items.forEach(function(s,i){s.addEventListener('click',function(){pick(i)});s.addEventListener('mouseenter',function(){pick(i)})});
+    pick(0);
+  });
+
+  /* oferta: podgląd zdjęcia przy kursorze */
+  var peek=d.querySelector('.peek');
+  if(peek&&!touch){
+    var px=0,py=0,qx=0,qy=0,imgs={};
+    peek.querySelectorAll('img').forEach(function(im){imgs[im.dataset.k]=im});
+    d.querySelectorAll('.svc a[data-k]').forEach(function(a){
+      a.addEventListener('mouseenter',function(){peek.classList.add('show');for(var k in imgs)imgs[k].classList.toggle('on',k===a.dataset.k)});
+      a.addEventListener('mouseleave',function(){peek.classList.remove('show')});
+    });
+    addEventListener('pointermove',function(e){px=e.clientX+190;py=e.clientY});
+    (function l(){qx+=(px-qx)*.15;qy+=(py-qy)*.15;peek.style.left=qx+'px';peek.style.top=qy+'px';requestAnimationFrame(l)})();
+  }
+
+  /* galeria pozioma: przeciąganie i strzałki */
+  d.querySelectorAll('.rail').forEach(function(r){
+    var down=false,sx=0,sl=0,movedR=false;
+    r.addEventListener('pointerdown',function(e){if(e.pointerType!=='mouse')return;down=true;movedR=false;sx=e.clientX;sl=r.scrollLeft;r.classList.add('drag')});
+    addEventListener('pointerup',function(){down=false;r.classList.remove('drag')});
+    addEventListener('pointermove',function(e){if(!down)return;var dx=e.clientX-sx;if(Math.abs(dx)>4)movedR=true;r.scrollLeft=sl-dx});
+    r.addEventListener('click',function(e){if(movedR){e.preventDefault();e.stopPropagation()}},true);
+    var nav=d.querySelector('[data-rail="'+r.id+'"]');
+    if(nav)nav.querySelectorAll('button').forEach(function(b){b.addEventListener('click',function(){
+      r.scrollBy({left:(b.dataset.dir==='1'?1:-1)*Math.min(innerWidth*.6,620),behavior:'smooth'});
+    })});
+  });
+
+  /* opinie: Google / Fixly */
+  d.querySelectorAll('.src-tabs').forEach(function(t){
+    var bs=t.querySelectorAll('button');
+    bs.forEach(function(b){b.addEventListener('click',function(){
+      bs.forEach(function(x){var on=x===b;x.setAttribute('aria-selected',on);var p=d.getElementById(x.getAttribute('aria-controls'));if(p)p.hidden=!on;});
+      var sc=d.querySelector('[data-score]');if(sc){sc.querySelector('b').textContent='5,0';sc.querySelector('.cnt').textContent=b.dataset.cnt;}
+    })});
+  });
+
+  /* proces: prąd płynie przewodem */
+  d.querySelectorAll('.steps').forEach(function(s){
+    var lis=s.querySelectorAll('li');
+    function u(){
+      var r=s.getBoundingClientRect(),mid=innerHeight*.6;
+      var p=Math.min(1,Math.max(0,(mid-r.top)/r.height));
+      s.style.setProperty('--fill',p.toFixed(4));
+      lis.forEach(function(li){li.classList.toggle('on',li.getBoundingClientRect().top<mid)});
+    }
+    addEventListener('scroll',u,{passive:true});u();
+  });
+
+  /* parallax zdjęć w dużych panelach */
+  var plx=[].slice.call(d.querySelectorAll('[data-plx]'));
+  if(plx.length&&!reduce){
+    function pu(){plx.forEach(function(im){var r=im.parentNode.getBoundingClientRect();if(r.bottom<0||r.top>innerHeight)return;var p=(r.top+r.height/2-innerHeight/2)/innerHeight;im.style.transform='translateY('+(p*-parseFloat(im.dataset.plx)).toFixed(1)+'px)'})}
+    addEventListener('scroll',pu,{passive:true});pu();
+  }
+
+  /* odsłanianie */
+  var rv=d.querySelectorAll('.rv');
+  if('IntersectionObserver' in window){
+    var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{rootMargin:'0px 0px -8% 0px'});
+    rv.forEach(function(e){io.observe(e)});
+  }else rv.forEach(function(e){e.classList.add('in')});
+
+  /* lightbox */
+  var lb=d.querySelector('.lb');
+  if(lb){
+    var li=lb.querySelector('img');
+    d.querySelectorAll('[data-lb]').forEach(function(f){f.addEventListener('click',function(){
+      li.src=f.dataset.lb;li.alt=(f.querySelector('img')||{}).alt||'';lb.classList.add('open');if(lenis)lenis.stop();
+    })});
+    function close(){lb.classList.remove('open');if(lenis)lenis.start()}
+    lb.addEventListener('click',close);addEventListener('keydown',function(e){if(e.key==='Escape')close()});
+  }
 })();
 
 (function(){try{if(String(location.protocol).indexOf('http')!==0)return;try{if(/[?&#]team=1/.test(location.search+location.hash)){localStorage.setItem('nb_team','1');}}catch(e){}try{if(localStorage.getItem('nb_team')==='1')return;}catch(e){}if(/crm-newbeginning|crm\.impulseo\.pl/.test(document.referrer||''))return;try{if(navigator.webdriver)return;}catch(e){}try{if(/^https?:\/\/(kris20032|impulseo-pl)\.github\.io\/?$/i.test(document.referrer||''))return;}catch(e){}if(sessionStorage.getItem('_dv'))return;sessionStorage.setItem('_dv','1');var seg=(location.pathname.split('/').filter(Boolean)[0])||'';var base=location.origin+(seg?('/'+seg):'');var ua='';try{ua=(navigator.userAgent||'').slice(0,300);}catch(e){}var EP='https://zngfubfinbojfgaxdrbf.supabase.co/functions/v1/demo-view';try{fetch(EP,{method:'POST',keepalive:true,headers:{'Content-Type':'text/plain'},body:JSON.stringify({demo_url:base,page:location.pathname,referrer:(document.referrer||null),user_agent:(ua||null)})}).catch(function(){});}catch(e){}}catch(e){}})();
